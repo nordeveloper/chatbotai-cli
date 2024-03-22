@@ -80,13 +80,13 @@ def getCharacterPrompt(promptjson):
     sysprompt = promptjson['system_prompt']+"\n"
 
     if(promptjson['persona']):
-        sysprompt+= promptjson['persona']
+        sysprompt+= "Persona: "+promptjson['persona']+"\n"
 
     if(promptjson['scenario']):
-        sysprompt+="\nScenario:"+ promptjson['scenario']        
+        sysprompt+="Scenario: "+ promptjson['scenario']+"\n"        
 
     if(promptjson['first_mes']):
-        sysprompt+="\nFirst message:"+ promptjson['first_mes']
+        sysprompt+="First message: "+ promptjson['first_mes']
 
     if(promptjson['name']):
         sysprompt = sysprompt.replace('{{char}}', promptjson['name'])
@@ -147,10 +147,6 @@ promptjson = json.load(charjson)
 
 system_prompt = getCharacterPrompt(promptjson)
 conversation.append({"role": "system", "content": system_prompt})
-
-# get_voices()
-# print(config)
-# print(system_prompt)
 
 print(f'{Fore.GREEN}'+conversation[0]['content'])
 
