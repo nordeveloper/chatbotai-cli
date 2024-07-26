@@ -2,16 +2,25 @@
 import datetime
 import requests
 import json
+import colorama
 from colorama import init, Fore, Back, Style
 from googletrans import Translator
 import speech_recognition as sr
 import pyttsx3
 import models
+import os
 
-init()
+colorama.init(autoreset=True)
 
 config_json = open('config.json')
 config = json.load(config_json)
+
+if not os.path.exists('api_key.txt'):
+    print('[NOTE] Please create a file named api_key.txt and put your OpenRouter AI API key inside')
+    exit()
+else:
+    f =  open('api_key.txt')
+    api_key = f.read()
 
 
 def show_datetime():
@@ -85,14 +94,12 @@ def get_ai_response(prompt):
     ]
 
     api_url = apiUrls[1]
-    f =  open('api_key.txt')
-    api_key = f.read()
 
     chat_history.append({"role": "user", "content": prompt})
 
     myobj = {
         "model": models.list[1],
-        "max_tokens":config.max_tokens,
+        "max_tokens":config['max_tokens'],
         "messages": chat_history,
         'temperature': 0.8,
         'top_p': 1,
@@ -126,7 +133,7 @@ promptjson = json.load(charjson)
 system_prompt = get_character_prompt(promptjson)
 chat_history.append({"role": "system", "content": system_prompt})
 
-print(f'{Fore.GREEN} Hi, I am helpfull ChatBot Assistant AI. How can I help you?')
+print(f'{Fore.GREEN} Hi, I am helpful ChatBot Assistant AI. How can I help you?')
 
 def run():
 
