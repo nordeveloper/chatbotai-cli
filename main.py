@@ -1,171 +1,169 @@
-# ChatBot Assistant AI CLI
 import datetime
 import requests
 import json
 import colorama
-from colorama import init, Fore, Back, Style
+from colorama import Fore
 from googletrans import Translator
 import speech_recognition as sr
 import pyttsx3
-import models
 import os
 
 colorama.init(autoreset=True)
 
-config_json = open('config.json')
-config = json.load(config_json)
+class ChatBotAssistant:
+    def __init__(self, config_path='config.json', api_key_path='api_key.txt', character_path='character.json'):
+        self.config = self.load_config(config_path)
+        self.api_key = self.load_api_key(api_key_path)
+        self.chat_history = []
+        self.translator = Translator()
+        self.promptjson = self.load_character_prompt(character_path)
+        self.system_prompt = self.get_character_prompt(self.promptjson)
+        self.chat_history.append({"role": "system", "content": self.system_prompt})
+        self.engine = pyttsx3.init()
+        self.recognizer = sr.Recognizer()
+        print(f'{Fore.GREEN} Hi, I am helpful ChatBot Assistant AI. How can I help you?')
 
-if not os.path.exists('api_key.txt'):
-    print('[NOTE] Please create a file named api_key.txt and put your OpenRouter AI API key inside')
-    exit()
-else:
-    f =  open('api_key.txt')
-    api_key = f.read()
+    @staticmethod
+    def load_config(config_path):
+        with open(config_path) as config_file:
+            return json.load(config_file)
 
+    @staticmethod
+    def load_api_key(api_key_path):
+        if not os.path.exists(api_key_path):
+            print('[NOTE] Please create a file named api_key.txt and put your OpenRouter AI API key inside')
+            exit()
+        else:
+            with open(api_key_path) as api_file:
+                return api_file.read().strip()
 
-def show_datetime():
-    return datetime.datetime.today().strftime("%m-%d-%Y %H:%M")
-    
+    @staticmethod
+    def load_character_prompt(character_path):
+        with open(character_path) as character_file:
+            return json.load(character_file)
 
-def get_voices():
-    engine = pyttsx3.init()
-    voices = engine.getProperty('voices')
-    for voice in voices:
-        print("Name: "+ voice.name)
+    @staticmethod
+    def show_datetime():
+        return datetime.datetime.today().strftime("%m-%d-%Y %H:%M")
 
+    def get_voices(self):
+        voices = self.engine.getProperty('voices')
+        for voice in voices:
+            print("Name: " + voice.name)
 
-def text_to_speech(text):
-    engine = pyttsx3.init()
-    voices = engine.getProperty('voices')
-    engine.setProperty('rate', 130)
-    engine.setProperty('voice', voices[config['speeker']].id)
-    engine.say(text)
-    engine.runAndWait()
+    def text_to_speech(self, text):
+        voices = self.engine.getProperty('voices')
+        self.engine.setProperty('rate', 130)
+        self.engine.setProperty('voice', voices[self.config['speaker']].id)
+        self.engine.say(text)
+        self.engine.runAndWait()
 
+    def speech_to_text(self):
+        try:
+            with sr.Microphone() as source:
+                print("Waiting for speech...")
+                self.recognizer.adjust_for_ambient_noise(source)
+                audio = self.recognizer.listen(source, timeout=10, phrase_time_limit=5)
 
-def speech_to_text():
-    recognizer = sr.Recognizer()
-    try:
-        with sr.Microphone() as source:
-            print("Waiting for speech...")
-            recognizer.adjust_for_ambient_noise(source)
-            audio = recognizer.listen(source, timeout=10, phrase_time_limit=5)
+            if audio:
+                print("Recognizing...")
+                text = self.recognizer.recognize_google(audio)
+            return text
 
-        if(audio):
-            print("Recognizing...")
-            text = recognizer.recognize_google(audio)
-        return text
-        
-    except sr.UnknownValueError:
-        print("Sorry, I could not understand what you said.")
-        return None
-    except sr.RequestError as e:
-        print(f"Could not request results from Google Speech Recognition:{e}")
-        return None    
+        except sr.UnknownValueError:
+            print("Sorry, I could not understand what you said.")
+            return None
+        except sr.RequestError as e:
+            print(f"Could not request results from Google Speech Recognition: {e}")
+            return None
 
+    def google_translate(self, text, dest="ru"):
+        result = self.translator.translate(text, src="en", dest=dest)
+        return result.text
 
-def google_translate(text, dest="ru"):
-    translator = Translator() 
-    result = translator.translate(text, src="en", dest=dest)
-    return result.text   
-
-
-def get_character_prompt(promptjson):
-    user_name = ''
-    sysprompt = promptjson['system_prompt']+"\n"
-    if(promptjson['user_name']):
-       user_name = promptjson['user_name']
-    if(promptjson['persona']):
-        sysprompt+= "Persona: "+promptjson['persona']+"\n"
-    if(promptjson['scenario']):
-        sysprompt+="Scenario: "+ promptjson['scenario']+"\n"
-    if(promptjson['first_mes']):
-        sysprompt+="First message: "+ promptjson['first_mes']
-    if(promptjson['name']):
-        sysprompt = sysprompt.replace('{{char}}', promptjson['name'])
-        sysprompt = sysprompt.replace('{{user}}', user_name)
+    def get_character_prompt(self, promptjson):
+        user_name = ''
+        sysprompt = promptjson['system_prompt'] + "\n"
+        if promptjson['user_name']:
+            user_name = promptjson['user_name']
+        if promptjson['persona']:
+            sysprompt += "Persona: " + promptjson['persona'] + "\n"
+        if promptjson['scenario']:
+            sysprompt += "Scenario: " + promptjson['scenario'] + "\n"
+        if promptjson['first_mes']:
+            sysprompt += "First message: " + promptjson['first_mes']
+        if promptjson['name']:
+            sysprompt = sysprompt.replace('{{char}}', promptjson['name'])
+            sysprompt = sysprompt.replace('{{user}}', user_name)
         return sysprompt
 
+    def get_ai_response(self, prompt):
+        api_urls = [
+            'https://api.openai.com/v1/chat/completions',
+            'https://openrouter.ai/api/v1/chat/completions'
+        ]
 
-def get_ai_response(prompt):
-    apiUrls = [
-        'https://api.openai.com/v1/chat/completions',
-        'https://openrouter.ai/api/v1/chat/completions'
-    ]
+        api_url = api_urls[1]
 
-    api_url = apiUrls[1]
+        self.chat_history.append({"role": "user", "content": prompt})
 
-    chat_history.append({"role": "user", "content": prompt})
+        myobj = {
+            "model": "gpt-4",
+            "max_tokens": self.config['max_tokens'],
+            "messages": self.chat_history,
+            'temperature': 0.8,
+            'top_p': 1,
+            'frequency_penalty': 0.9,
+            'presence_penalty': 0.9
+        }
 
-    myobj = {
-        "model": models.list[1],
-        "max_tokens":config['max_tokens'],
-        "messages": chat_history,
-        'temperature': 0.8,
-        'top_p': 1,
-        'frequency_penalty': 0.9,
-        'presence_penalty': 0.9
-    }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "https://localhost"
+        }
+        response = requests.post(api_url, json=myobj, headers=headers)
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": "https://localhost"
-    }
-    response = requests.post(api_url, json=myobj, headers=headers)
+        ai_response_text = 'Error, try again'
 
-    aiResponseText = 'Error, try again'
+        if response.status_code == 200:
+            data = response.json()
+            if data['choices'][0]['message']['content']:
+                ai_response_text = data['choices'][0]['message']['content']
+                self.chat_history.append({"role": "assistant", "content": ai_response_text})
 
-    if response.status_code == 200:
-        data = response.json()
-        if(data['choices'][0]['message']['content']):
-            aiResponseText = data['choices'][0]['message']['content']
-            chat_history.append({"role": "assistant", "content": aiResponseText})  
-        
-        return aiResponseText            
-    else:
-        print(response)
+        return ai_response_text
 
+    def run(self):
+        while True:
+            if self.config['microphone']:
+                input_txt = self.speech_to_text()
+            else:
+                input_txt = input(f'{Fore.BLUE} You: ')
 
-chat_history = []
-charjson = open('character.json')
-promptjson = json.load(charjson)
-system_prompt = get_character_prompt(promptjson)
-chat_history.append({"role": "system", "content": system_prompt})
+            if input_txt == 'exit':
+                break
 
-print(f'{Fore.GREEN} Hi, I am helpful ChatBot Assistant AI. How can I help you?')
+            if input_txt == 'date time':
+                current_datetime = self.show_datetime()
+                print(f'{Fore.YELLOW}' + current_datetime)
+                self.text_to_speech(current_datetime)
+                continue
 
-def run():
+            ai_response_txt_en = self.get_ai_response(input_txt)
+            print(f'{Fore.GREEN}' + ai_response_txt_en)
 
-    while True:
-        if(config['microphone']==True):
-            inputTxt = speech_to_text()
-        else:
-            inputTxt = input(f'{Fore.BLUE} You: ')
+            if self.config['translate']:
+                ai_response_txt_ru = self.google_translate(ai_response_txt_en)
+                print(f'{Fore.YELLOW}' + ai_response_txt_ru)
 
-        if(inputTxt == 'exit'):
-            break
+            if self.config['speech'] and self.config['speech_language'] == 'en':
+                self.text_to_speech(ai_response_txt_en)
 
-        if(inputTxt == 'date time'):
-            datetime = show_datetime()
-            print(f'{Fore.YELLOW}'+ datetime)
-            text_to_speech(datetime)
-            continue
-
-        AiResponsTxt_en = get_ai_response(inputTxt)
-        print(f'{Fore.GREEN}'+AiResponsTxt_en)  
-            
-        if(config['translate']==True):
-            AiResponsTxt_ru = google_translate(AiResponsTxt_en)
-            print(f'{Fore.YELLOW}'+ AiResponsTxt_ru)
-            
-        if(config['speech']==True and config['speech_language']=='en'):
-            text_to_speech(AiResponsTxt_en)
-
-        if(config['speech']==True and config['speech_language']=='ru'):
-            text_to_speech(AiResponsTxt_ru)
-
+            if self.config['speech'] and self.config['speech_language'] == 'ru':
+                self.text_to_speech(ai_response_txt_ru)
 
 
 if __name__ == "__main__":
-    run()
+    bot = ChatBotAssistant()
+    bot.run()
